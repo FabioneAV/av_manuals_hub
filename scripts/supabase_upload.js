@@ -1,19 +1,34 @@
-import { createClient } from "@supabase/supabase-js";
+// scripts/supabase_upload.js
 import fs from "fs";
+import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-export async function uploadManuals(file) {
-  const data = JSON.parse(fs.readFileSync(file));
-  for (const chunk of chunkArray(data, 100)) {
-    const { error } = await supabase.from("external_manuals").upsert(chunk, { onConflict: "file_hash" });
-    if (error) console.error("Errore:", error.message);
-  }
-  console.log(`📦 Caricati ${data.length} manuali da ${file}`);
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error("❌ Mancano le variabili SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
 }
 
-function chunkArray(arr, size) {
-  return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
-    arr.slice(i * size, i * size + size)
-  );
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+export async function uploadManuals(filePath) {
+  const content = fs.readFileSync(filePath, "utf8");
+  const manuals = JSON.parse(content);
+
+  if (!manuals || manuals.length === 0) {
+    console.log("⚠️ Nessun manuale da caricare.");
+    return;
+  }
+
+  console.log(`☁️ Upload di ${manuals.length} manuali su Supabase...`);
+
+  const { data, error } = await supabase
+    .from("external_manuals")
+    .upsert(manuals, { onConflict: ["pdf_url"] });
+
+  if (error) {
+    console.error("❌ Errore durante l'upload su Supabase:", error.message);
+  } else {
+    console.log(`✅ Caricati ${data?.length || manuals.length} record.`);
+  }
 }
