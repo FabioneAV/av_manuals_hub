@@ -1,1 +1,7 @@
-
+{
+  "brand": "qsc",
+  "startUrls": ["https://www.qsc.com/resources/", "https://www.qsc.com/products/"],
+  "pdfPattern": "https://www.qsc.com/.*\\.pdf$",
+  "maxDepth": 3,
+  "followDomains": ["www.qsc.com"]
+}
