@@ -2,7 +2,7 @@ name: Sync AV Manuals
 
 on:
   schedule:
-    - cron: "0 3 * * 1"   # Ogni lunedì alle 03:00
+    - cron: "0 3 * * 1"   # Ogni lunedì alle 03:00 UTC
   workflow_dispatch: {}
 
 jobs:
@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run crawler and upload
+      - name: Run AV Manuals Sync
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
