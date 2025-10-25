@@ -15,18 +15,16 @@ const HEADERS = {
 };
 
 /**
- * Crawler Maxhub: ricava tutti i PDF dal Resource Center ufficiale
+ * Crawler ufficiale Maxhub — recupera tutti i PDF dal Resource Center
  */
 export async function crawlSite() {
   console.log("📦 Avvio crawling per brand: Maxhub...");
 
   try {
-    // 1️⃣ Recupera lista prodotti
+    // 1️⃣ Recupera lista prodotti (GET)
     console.log("📡 Fase 1: recupero lista prodotti...");
-
-    const listRes = await axios.post(
-      `${BASE_URL}/v1/api/resource/list`,
-      { region: REGION, page: 1, size: 200 },
+    const listRes = await axios.get(
+      `${BASE_URL}/v1/api/resource/list?region=${REGION}&page=1&size=200`,
       { headers: HEADERS }
     );
 
@@ -41,7 +39,7 @@ export async function crawlSite() {
       console.log(`\n📘 Analisi prodotto: ${product.name} (${productId})`);
 
       try {
-        // 2a️⃣ Recupera struttura dettagliata (menus)
+        // 2a️⃣ Recupera struttura dettagliata (POST)
         const detailRes = await axios.post(
           `${BASE_URL}/v1/api/resource/detail`,
           { id: productId },
@@ -67,7 +65,7 @@ export async function crawlSite() {
 
         console.log(`📂 Trovati ${fileListIds.length} gruppi di file per ${product.name}`);
 
-        // 3️⃣ Recupera PDF da ciascun fileList
+        // 3️⃣ Recupera PDF da ciascun fileList (POST)
         for (const fileListId of fileListIds) {
           const contentRes = await axios.post(
             `${BASE_URL}/v1/api/resource/content`,
