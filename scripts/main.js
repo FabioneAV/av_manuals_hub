@@ -13,7 +13,8 @@ const configDir = path.join(__dirname, "../configs");
 // 🧩 1️⃣ Legge tutte le configurazioni nella cartella configs/
 async function main() {
   console.log("🔍 Inizio sincronizzazione AV manuals...");
-  const files = fs.readdirSync(configDir).filter(f => f.endsWith(".json"));
+  const files = fs.readdirSync(configDir).filter((f) => f.endsWith(".json"));
+
   if (files.length === 0) {
     console.error("❌ Nessun file di configurazione trovato in configs/");
     process.exit(1);
@@ -26,8 +27,8 @@ async function main() {
     console.log(`\n📦 Avvio crawling per brand: ${config.brand}...`);
 
     try {
-      // 🧠 esegue il crawler
-      const results = await crawlSite(config);
+      // 🧠 Passiamo solo il nome del brand (stringa), non tutto l’oggetto
+      const results = await crawlSite(config.brand);
 
       if (!results || results.length === 0) {
         console.warn(`⚠️ Nessun manuale trovato per ${config.brand}`);
@@ -51,7 +52,7 @@ async function main() {
 }
 
 // Avvia
-main().catch(err => {
+main().catch((err) => {
   console.error("❌ Errore fatale:", err);
   process.exit(1);
 });
