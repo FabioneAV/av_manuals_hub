@@ -1,25 +1,31 @@
+// scripts/crawler_core.js
 import axios from "axios";
 import * as cheerio from "cheerio";
 
+/**
+ * Funzione generica per il crawling di siti AV
+ * @param {Object} config - configurazione del brand
+ * @param {string} config.brand - nome del brand
+ * @param {string} config.url - URL della pagina principale o API
+ */
 export async function crawlSite(config) {
   console.log(`🔍 Analisi sito per ${config.brand}...`);
   const results = [];
 
   try {
-    // ✅ Caso speciale: MAXHUB
+    // ✅ CASO SPECIALE: MAXHUB (usa API dedicate e pagine per prodotto)
     if (config.brand.toLowerCase() === "maxhub") {
       console.log("📡 Fase 1: recupero lista prodotti...");
 
+      // 1️⃣ Recupera la pagina principale con tutti i link ai prodotti
       const mainPage = await axios.get("https://www.maxhub.com/eu/resource-center/", {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (AVManualsBot)"
-        }
+        headers: { "User-Agent": "Mozilla/5.0 (AVManualsBot)" },
       });
 
       const $ = cheerio.load(mainPage.data);
       const productIds = [];
 
-      // Cerca link a /resource-center-detail/?id=xxxxx
+      // 2️⃣ Estrae tutti gli ID prodotto dalle URL tipo /resource-center-detail/?id=xxxx
       $('a[href*="/resource-center-detail/?id="]').each((_, el) => {
         const href = $(el).attr("href");
         const match = href.match(/id=([a-z0-9\-]+)/i);
@@ -28,7 +34,7 @@ export async function crawlSite(config) {
 
       console.log(`🔎 Trovati ${productIds.length} prodotti Maxhub`);
 
-      // Fase 2: per ogni ID, chiamata API
+      // 3️⃣ Cicla su ciascun prodotto per recuperare i file PDF associati
       for (const id of productIds) {
         try {
           const res = await axios.post(
@@ -41,11 +47,22 @@ export async function crawlSite(config) {
                 Origin: "https://www.maxhub.com",
                 Referer: `https://www.maxhub.com/eu/resource-center-detail/?id=${id}`,
               },
-              timeout: 15000
+              timeout: 15000,
             }
           );
 
-          const files = res.data?.data || [];
+          // ✅ Adattamento al nuovo formato JSON di Maxhub
+          const files =
+            res.data?.data?.fileList ||
+            res.data?.fileList ||
+            [];
+
+          if (!Array.isArray(files)) {
+            console.warn(`⚠️ Nessun fileList valido per ID ${id}`);
+            continue;
+          }
+
+          // 4️⃣ Aggiunge ogni PDF trovato all’elenco dei risultati
           for (const f of files) {
             if (!f?.fileUrl?.endsWith(".pdf")) continue;
             results.push({
@@ -67,7 +84,7 @@ export async function crawlSite(config) {
       return results;
     }
 
-    // ✅ Metodo generico (per altri brand)
+    // ✅ METODO GENERICO (per altri brand con pagine pubbliche HTML)
     const response = await axios.get(config.url, {
       headers: { "User-Agent": "Mozilla/5.0 (AVManualsBot)" },
       timeout: 20000,
