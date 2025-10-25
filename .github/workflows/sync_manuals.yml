@@ -10,31 +10,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-- name: Install dependencies (with Puppeteer)
-  run: |
-    npm install
-    npm install puppeteer
-    sudo apt-get update
-    sudo apt-get install -y \
-      libnss3 \
-      libatk1.0-0 \
-      libatk-bridge2.0-0 \
-      libx11-xcb1 \
-      libxcomposite1 \
-      libxcursor1 \
-      libxdamage1 \
-      libxi6 \
-      libxrandr2 \
-      libgbm1 \
-      libasound2 \
-      libpangocairo-1.0-0 \
-      libcups2 \
-      libxshmfence1 \
-      libgtk-3-0
 
+      - name: Install dependencies (with Puppeteer)
+        run: |
+          npm install
+          npm install puppeteer
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libx11-xcb1 \
+            libxcomposite1 \
+            libxcursor1 \
+            libxdamage1 \
+            libxi6 \
+            libxrandr2 \
+            libgbm1 \
+            libasound2 \
+            libpangocairo-1.0-0 \
+            libcups2 \
+            libxshmfence1 \
+            libgtk-3-0
 
       - name: Run AV Manuals Sync
         env:
