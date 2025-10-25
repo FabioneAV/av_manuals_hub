@@ -10,13 +10,11 @@ export async function crawlSite() {
   console.log("📦 Avvio crawling per brand: Maxhub...");
 
   try {
-    // 1️⃣ Recupera lista prodotti
+    // 1️⃣ Recupera lista prodotti (GET, non POST)
     console.log("📡 Fase 1: recupero lista prodotti...");
-    const listRes = await axios.post(`${BASE_URL}/v1/api/resource/list`, {
-      region: REGION,
-      page: 1,
-      size: 200,
-    });
+    const listRes = await axios.get(
+      `${BASE_URL}/v1/api/resource/list?region=${REGION}&page=1&size=200`
+    );
 
     const products = listRes.data?.data?.list || [];
     console.log(`🔎 Trovati ${products.length} prodotti Maxhub`);
@@ -88,6 +86,7 @@ export async function crawlSite() {
   }
 }
 
+// 🧪 Test locale
 if (process.argv[1].includes("crawler_core.js")) {
   crawlSite().then(() => console.log("✅ Crawling completato"));
 }
