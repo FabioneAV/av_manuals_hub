@@ -6,42 +6,64 @@ export async function crawlSite(config) {
   const results = [];
 
   try {
-    // ✅ Caso speciale: MAXHUB ha un'API dedicata
+    // ✅ Caso speciale: MAXHUB
     if (config.brand.toLowerCase() === "maxhub") {
-      console.log("📡 Uso dell'API ufficiale Maxhub...");
+      console.log("📡 Fase 1: recupero lista prodotti...");
 
-      // Chiamata POST all'API di Maxhub
-      const response = await axios.post(
-        "https://www.maxhub.com/eu/v1/api/resource/content",
-        new URLSearchParams({
-          menu_id: "fileList_4b4f696f-3038-45d5-a112-00c0fc73bbcc",
-        }),
-        {
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "User-Agent": "Mozilla/5.0 (AVManualsBot)",
-            Origin: "https://www.maxhub.com",
-            Referer: "https://www.maxhub.com/eu/resource-center/",
-          },
+      const mainPage = await axios.get("https://www.maxhub.com/eu/resource-center/", {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (AVManualsBot)"
         }
-      );
+      });
 
-      if (response.data && Array.isArray(response.data.data)) {
-        for (const item of response.data.data) {
-          if (!item?.fileUrl?.endsWith(".pdf")) continue;
-          results.push({
-            brand: "Maxhub",
-            product_name: item.title || "Manual",
-            pdf_url: item.fileUrl.startsWith("http")
-              ? item.fileUrl
-              : `https://www.maxhub.com${item.fileUrl}`,
-            source_url: "https://www.maxhub.com/eu/resource-center/",
-            last_sync: new Date().toISOString(),
-          });
+      const $ = cheerio.load(mainPage.data);
+      const productIds = [];
+
+      // Cerca link a /resource-center-detail/?id=xxxxx
+      $('a[href*="/resource-center-detail/?id="]').each((_, el) => {
+        const href = $(el).attr("href");
+        const match = href.match(/id=([a-z0-9\-]+)/i);
+        if (match && match[1]) productIds.push(match[1]);
+      });
+
+      console.log(`🔎 Trovati ${productIds.length} prodotti Maxhub`);
+
+      // Fase 2: per ogni ID, chiamata API
+      for (const id of productIds) {
+        try {
+          const res = await axios.post(
+            "https://www.maxhub.com/eu/v1/api/resource/content",
+            new URLSearchParams({ id }),
+            {
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "User-Agent": "Mozilla/5.0 (AVManualsBot)",
+                Origin: "https://www.maxhub.com",
+                Referer: `https://www.maxhub.com/eu/resource-center-detail/?id=${id}`,
+              },
+              timeout: 15000
+            }
+          );
+
+          const files = res.data?.data || [];
+          for (const f of files) {
+            if (!f?.fileUrl?.endsWith(".pdf")) continue;
+            results.push({
+              brand: "Maxhub",
+              product_name: f.title || "Manual",
+              pdf_url: f.fileUrl.startsWith("http")
+                ? f.fileUrl
+                : `https://www.maxhub.com${f.fileUrl}`,
+              source_url: `https://www.maxhub.com/eu/resource-center-detail/?id=${id}`,
+              last_sync: new Date().toISOString(),
+            });
+          }
+        } catch (err) {
+          console.warn(`⚠️ Errore con ID ${id}: ${err.message}`);
         }
       }
 
-      console.log(`📄 Trovati ${results.length} manuali via API Maxhub`);
+      console.log(`📄 Trovati ${results.length} manuali totali per Maxhub`);
       return results;
     }
 
