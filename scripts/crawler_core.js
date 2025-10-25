@@ -45,26 +45,31 @@ export async function crawlSite(config) {
           const data = res.data?.data;
           if (!data) continue;
 
-          // ✅ Nuovo sistema: recupera il nome del campo fileList dinamico
+          // ✅ Recupera il menu_id dinamico e costruisce il nome corretto della chiave
           const menuId = data.content?.menu_id;
           let fileArray = [];
 
-          if (menuId && Array.isArray(data[menuId])) {
-            fileArray = data[menuId];
-          } else if (Array.isArray(data.fileList)) {
-            fileArray = data.fileList;
-          } else if (Array.isArray(data.resourceList)) {
-            fileArray = data.resourceList;
+          if (menuId) {
+            const dynamicKey = `fileList_${menuId}`;
+            if (Array.isArray(data[dynamicKey])) {
+              fileArray = data[dynamicKey];
+            }
           }
 
+          // ✅ Fallback per altre varianti
           if (fileArray.length === 0) {
+            if (Array.isArray(data.fileList)) fileArray = data.fileList;
+            if (Array.isArray(data.resourceList)) fileArray = data.resourceList;
+          }
+
+          if (!fileArray || fileArray.length === 0) {
             console.warn(`⚠️ Nessun file PDF trovato per ID ${id}`);
             continue;
           }
 
           for (const f of fileArray) {
             const url = f.fileUrl || f.url || f.path;
-            if (!url || !url.endsWith(".pdf")) continue;
+            if (!url || !url.toLowerCase().endsWith(".pdf")) continue;
 
             results.push({
               brand: "Maxhub",
