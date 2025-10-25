@@ -1,11 +1,10 @@
 import axios from "axios";
 
-const BASE_URL = "https://www.maxhub.com/api";
+const BASE_URL = "https://sgp-cstore-pub.maxhub.com/maxhub_global_public/api";
 const REGION = "eu";
 
 /**
  * Crawling ufficiale dei manuali Maxhub
- * Recupera tutti i prodotti e i relativi file PDF
  */
 export async function crawlSite() {
   console.log("📦 Avvio crawling per brand: Maxhub...");
@@ -30,7 +29,7 @@ export async function crawlSite() {
       console.log(`\n📘 Analisi prodotto: ${product.name} (${productId})`);
 
       try {
-        // 2a️⃣ Recupera la struttura dettagliata (menus)
+        // 2a️⃣ Recupera struttura dettagliata (menus)
         const detailRes = await axios.get(
           `${BASE_URL}/v1/api/resource/detail?id=${productId}`
         );
@@ -53,7 +52,7 @@ export async function crawlSite() {
 
         console.log(`📂 Trovati ${fileListIds.length} gruppi di file per ${product.name}`);
 
-        // 3️⃣ Per ciascun fileList, ottieni i PDF reali
+        // 3️⃣ Recupera PDF da ciascun gruppo
         for (const fileListId of fileListIds) {
           const contentRes = await axios.get(
             `${BASE_URL}/v1/api/resource/content?id=${fileListId}`
@@ -82,7 +81,6 @@ export async function crawlSite() {
 
     console.log(`\n📄 Totale manuali trovati per Maxhub: ${manuals.length}`);
     console.log("🎉 Tutti i brand processati con successo!");
-
     return manuals;
   } catch (err) {
     console.error("❌ Errore fatale nel crawler Maxhub:", err.message);
@@ -90,7 +88,6 @@ export async function crawlSite() {
   }
 }
 
-// 🧪 Esecuzione diretta per test locale
 if (process.argv[1].includes("crawler_core.js")) {
   crawlSite().then(() => console.log("✅ Crawling completato"));
 }
