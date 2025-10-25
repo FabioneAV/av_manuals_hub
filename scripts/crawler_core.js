@@ -45,24 +45,29 @@ export async function crawlSite(config) {
           const data = res.data?.data;
           if (!data) continue;
 
-          // ✅ Recupera il menu_id dinamico e costruisce il nome corretto della chiave
           const menuId = data.content?.menu_id;
           let fileArray = [];
 
-          if (menuId) {
-            const dynamicKey = `fileList_${menuId}`;
-            if (Array.isArray(data[dynamicKey])) {
-              fileArray = data[dynamicKey];
-            }
+          // ✅ Primo tentativo: chiave dinamica a livello principale
+          if (menuId && Array.isArray(data[`fileList_${menuId}`])) {
+            fileArray = data[`fileList_${menuId}`];
           }
 
-          // ✅ Fallback per altre varianti
+          // ✅ Secondo tentativo: fileList_xxx dentro "content"
+          else if (menuId && data.content && Array.isArray(data.content[`fileList_${menuId}`])) {
+            fileArray = data.content[`fileList_${menuId}`];
+          }
+
+          // ✅ Terzo tentativo: cerca qualunque chiave che inizi con "fileList_"
+          else {
+            const allKeys = Object.keys(data);
+            const possibleKey = allKeys.find((k) => k.startsWith("fileList_") && Array.isArray(data[k]));
+            if (possibleKey) fileArray = data[possibleKey];
+          }
+
+          // ✅ DEBUG (mostra quali chiavi ha l’oggetto)
           if (fileArray.length === 0) {
-            if (Array.isArray(data.fileList)) fileArray = data.fileList;
-            if (Array.isArray(data.resourceList)) fileArray = data.resourceList;
-          }
-
-          if (!fileArray || fileArray.length === 0) {
+            console.log(`🧩 Chiavi trovate per ID ${id}: ${Object.keys(data).join(", ")}`);
             console.warn(`⚠️ Nessun file PDF trovato per ID ${id}`);
             continue;
           }
