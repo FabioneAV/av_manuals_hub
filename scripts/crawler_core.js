@@ -38,20 +38,31 @@ export async function crawlSite(config) {
                 Origin: "https://www.maxhub.com",
                 Referer: `https://www.maxhub.com/eu/resource-center-detail/?id=${id}`,
               },
-              timeout: 15000,
+              timeout: 20000,
             }
           );
 
           const data = res.data?.data;
           if (!data) continue;
 
-          // ✅ Gestisce i vari formati di dati
-          const fileLists = [];
+          // ✅ Nuovo sistema: recupera il nome del campo fileList dinamico
+          const menuId = data.content?.menu_id;
+          let fileArray = [];
 
-          if (Array.isArray(data.fileList)) fileLists.push(...data.fileList);
-          if (Array.isArray(data.resourceList)) fileLists.push(...data.resourceList);
+          if (menuId && Array.isArray(data[menuId])) {
+            fileArray = data[menuId];
+          } else if (Array.isArray(data.fileList)) {
+            fileArray = data.fileList;
+          } else if (Array.isArray(data.resourceList)) {
+            fileArray = data.resourceList;
+          }
 
-          for (const f of fileLists) {
+          if (fileArray.length === 0) {
+            console.warn(`⚠️ Nessun file PDF trovato per ID ${id}`);
+            continue;
+          }
+
+          for (const f of fileArray) {
             const url = f.fileUrl || f.url || f.path;
             if (!url || !url.endsWith(".pdf")) continue;
 
