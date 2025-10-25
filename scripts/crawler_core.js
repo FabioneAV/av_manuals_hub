@@ -46,13 +46,16 @@ export async function crawlSite(config) {
           if (!data) continue;
 
           // ✅ Estrarre il contenuto HTML dal campo "details"
-          const html = data.details || "";
-          if (!html) {
-            console.warn(`⚠️ Nessun campo "details" per ID ${id}`);
-            continue;
-          }
+         const html = data.details || "";
+if (!html) {
+  console.warn(`⚠️ Nessun campo "details" per ID ${id}`);
+  continue;
+}
 
-          const $details = cheerio.load(html);
+// 👇 DEBUG: vediamo cosa contiene
+console.log(`🧾 Anteprima campo "details" per ID ${id}:`, html.substring(0, 500).replace(/\s+/g, " "));
+
+const $details = cheerio.load(html);
           let found = 0;
 
           $details('a[href$=".pdf"]').each((_, el) => {
