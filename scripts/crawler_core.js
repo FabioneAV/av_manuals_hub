@@ -1,138 +1,84 @@
-// scripts/crawler_core.js
 import axios from "axios";
-import * as cheerio from "cheerio";
 
-export async function crawlSite(config) {
-  console.log(`🔍 Analisi sito per ${config.brand}...`);
-  const results = [];
+const BASE_URL = "https://www.maxhub.com/api";
+const REGION = "eu";
 
-  try {
-    // ✅ CASO SPECIALE: MAXHUB
-    if (config.brand.toLowerCase() === "maxhub") {
-      console.log("📡 Fase 1: recupero lista prodotti...");
+export async function crawlMaxhub() {
+  console.log("📦 Avvio crawling per brand: Maxhub...");
 
-      const mainPage = await axios.get("https://www.maxhub.com/eu/resource-center/", {
-        headers: { "User-Agent": "Mozilla/5.0 (AVManualsBot)" },
-      });
+  // 1️⃣ Recupera lista prodotti
+  console.log("📡 Fase 1: recupero lista prodotti...");
+  const listRes = await axios.post(`${BASE_URL}/v1/api/resource/list`, {
+    region: REGION,
+    page: 1,
+    size: 200
+  });
+  const products = listRes.data?.data?.list || [];
+  console.log(`🔎 Trovati ${products.length} prodotti Maxhub`);
 
-      const $ = cheerio.load(mainPage.data);
-      const productIds = [];
+  const manuals = [];
 
-      $('a[href*="/resource-center-detail/?id="]').each((_, el) => {
-        const href = $(el).attr("href");
-        const match = href.match(/id=([a-z0-9\-]+)/i);
-        if (match && match[1]) productIds.push(match[1]);
-      });
+  // 2️⃣ Per ogni prodotto
+  for (const product of products) {
+    const productId = product.id;
+    console.log(`\n📘 Analisi prodotto: ${product.name} (${productId})`);
 
-      console.log(`🔎 Trovati ${productIds.length} prodotti Maxhub`);
+    try {
+      // 2a️⃣ Ottieni struttura delle sezioni (menus)
+      const detailRes = await axios.get(
+        `${BASE_URL}/v1/api/resource/detail?id=${productId}`
+      );
+      const menus = detailRes.data?.data?.menus || [];
 
-      for (const id of productIds) {
-        try {
-          const res = await axios.post(
-            "https://www.maxhub.com/eu/v1/api/resource/content",
-            new URLSearchParams({ id }),
-            {
-              headers: {
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "User-Agent": "Mozilla/5.0 (AVManualsBot)",
-                Origin: "https://www.maxhub.com",
-                Referer: `https://www.maxhub.com/eu/resource-center-detail/?id=${id}`,
-              },
-              timeout: 20000,
-            }
-          );
-
-          const data = res.data?.data;
-          if (!data) continue;
-
-          // ✅ Estrarre il contenuto HTML dal campo "details"
-          console.log(`🧠 Chiavi nel campo data per ID ${id}:`, Object.keys(data));
-if (data.fileList || data.files) {
-  console.log(`📎 Trovato fileList o files per ID ${id}:`, JSON.stringify(data.fileList || data.files).substring(0, 400));
-}
-          const details = data.details;
-
-if (!details) {
-  console.warn(`⚠️ Nessun campo "details" per ID ${id}`);
-  continue;
-}
-
-if (typeof details === "string") {
-  console.log(`🧾 Campo details (stringa) per ID ${id}:`, details.substring(0, 400).replace(/\s+/g, " "));
-} else {
-  console.log(`🧾 Campo details (tipo ${typeof details}) per ID ${id}:`, JSON.stringify(details, null, 2).substring(0, 400));
-}
-
-const html =
-  typeof details === "string"
-    ? details
-    : JSON.stringify(details);
-
-const $details = cheerio.load(html);
-          let found = 0;
-
-          $details('a[href$=".pdf"]').each((_, el) => {
-            const href = $details(el).attr("href");
-            const text = $details(el).text().trim() || "Manual";
-
-            if (!href) return;
-
-            const fullUrl = href.startsWith("http")
-              ? href
-              : `https://www.maxhub.com${href}`;
-
-            results.push({
-              brand: "Maxhub",
-              product_name: text,
-              pdf_url: fullUrl,
-              source_url: `https://www.maxhub.com/eu/resource-center-detail/?id=${id}`,
-              last_sync: new Date().toISOString(),
-            });
-
-            found++;
-          });
-
-          if (found === 0) {
-            console.warn(`⚠️ Nessun PDF trovato nel campo details per ID ${id}`);
-          } else {
-            console.log(`📄 Trovati ${found} PDF per ID ${id}`);
-          }
-        } catch (err) {
-          console.warn(`⚠️ Errore con ID ${id}: ${err.message}`);
+      // 2b️⃣ Trova tutti gli ID che iniziano con "fileList_"
+      const fileListIds = [];
+      const traverse = (nodes) => {
+        for (const n of nodes) {
+          if (n.id?.startsWith("fileList_")) fileListIds.push(n.id);
+          if (n.children?.length) traverse(n.children);
         }
+      };
+      traverse(menus);
+
+      if (!fileListIds.length) {
+        console.log(`⚠️ Nessun fileList trovato per ${product.name}`);
+        continue;
       }
 
-      console.log(`📄 Totale manuali trovati per Maxhub: ${results.length}`);
-      return results;
+      console.log(`📂 Trovati ${fileListIds.length} gruppi di file per ${product.name}`);
+
+      // 3️⃣ Per ogni fileList_XYZ, ottieni i PDF
+      for (const fileListId of fileListIds) {
+        const contentRes = await axios.get(
+          `${BASE_URL}/v1/api/resource/content?id=${fileListId}`
+        );
+        const details = contentRes.data?.data?.details || [];
+
+        for (const d of details) {
+          if (!d.href || !d.href.endsWith(".pdf")) continue;
+
+          manuals.push({
+            brand: "Maxhub",
+            product: product.name,
+            title: d.name,
+            url: d.href,
+            size: d.size || null,
+            date: d.time || null,
+          });
+
+          console.log(`📄 PDF trovato: ${d.name}`);
+        }
+      }
+    } catch (err) {
+      console.error(`❌ Errore su ${product.name}:`, err.message);
     }
-
-    // ✅ GENERICO PER ALTRI BRAND
-    const response = await axios.get(config.url, {
-      headers: { "User-Agent": "Mozilla/5.0 (AVManualsBot)" },
-      timeout: 20000,
-    });
-
-    const $ = cheerio.load(response.data);
-    $("a[href$='.pdf']").each((_, el) => {
-      const pdfUrl = $(el).attr("href");
-      const title = $(el).text().trim() || "Manual";
-      const absoluteUrl = pdfUrl.startsWith("http")
-        ? pdfUrl
-        : new URL(pdfUrl, config.url).href;
-
-      results.push({
-        brand: config.brand,
-        product_name: title,
-        pdf_url: absoluteUrl,
-        source_url: config.url,
-        last_sync: new Date().toISOString(),
-      });
-    });
-
-    console.log(`📄 Trovati ${results.length} manuali per ${config.brand}`);
-    return results;
-  } catch (err) {
-    console.error(`❌ Errore durante il crawling di ${config.brand}:`, err.message);
-    return [];
   }
+
+  console.log(`\n📄 Totale manuali trovati per Maxhub: ${manuals.length}`);
+  return manuals;
+}
+
+// Per test locale
+if (process.argv[1].includes("crawler_core.js")) {
+  crawlMaxhub().then(() => console.log("✅ Crawling completato"));
 }
