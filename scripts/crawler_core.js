@@ -45,51 +45,48 @@ export async function crawlSite(config) {
           const data = res.data?.data;
           if (!data) continue;
 
-          const menuId = data.content?.menu_id;
-          let fileArray = [];
-
-          // ✅ Primo tentativo: chiave dinamica a livello principale
-          if (menuId && Array.isArray(data[`fileList_${menuId}`])) {
-            fileArray = data[`fileList_${menuId}`];
-          }
-
-          // ✅ Secondo tentativo: fileList_xxx dentro "content"
-          else if (menuId && data.content && Array.isArray(data.content[`fileList_${menuId}`])) {
-            fileArray = data.content[`fileList_${menuId}`];
-          }
-
-          // ✅ Terzo tentativo: cerca qualunque chiave che inizi con "fileList_"
-          else {
-            const allKeys = Object.keys(data);
-            const possibleKey = allKeys.find((k) => k.startsWith("fileList_") && Array.isArray(data[k]));
-            if (possibleKey) fileArray = data[possibleKey];
-          }
-
-          // ✅ DEBUG (mostra quali chiavi ha l’oggetto)
-          if (fileArray.length === 0) {
-            console.log(`🧩 Chiavi trovate per ID ${id}: ${Object.keys(data).join(", ")}`);
-            console.warn(`⚠️ Nessun file PDF trovato per ID ${id}`);
+          // ✅ Estrarre il contenuto HTML dal campo "details"
+          const html = data.details || "";
+          if (!html) {
+            console.warn(`⚠️ Nessun campo "details" per ID ${id}`);
             continue;
           }
 
-          for (const f of fileArray) {
-            const url = f.fileUrl || f.url || f.path;
-            if (!url || !url.toLowerCase().endsWith(".pdf")) continue;
+          const $details = cheerio.load(html);
+          let found = 0;
+
+          $details('a[href$=".pdf"]').each((_, el) => {
+            const href = $details(el).attr("href");
+            const text = $details(el).text().trim() || "Manual";
+
+            if (!href) return;
+
+            const fullUrl = href.startsWith("http")
+              ? href
+              : `https://www.maxhub.com${href}`;
 
             results.push({
               brand: "Maxhub",
-              product_name: f.title || f.name || "Manual",
-              pdf_url: url.startsWith("http") ? url : `https://www.maxhub.com${url}`,
+              product_name: text,
+              pdf_url: fullUrl,
               source_url: `https://www.maxhub.com/eu/resource-center-detail/?id=${id}`,
               last_sync: new Date().toISOString(),
             });
+
+            found++;
+          });
+
+          if (found === 0) {
+            console.warn(`⚠️ Nessun PDF trovato nel campo details per ID ${id}`);
+          } else {
+            console.log(`📄 Trovati ${found} PDF per ID ${id}`);
           }
         } catch (err) {
           console.warn(`⚠️ Errore con ID ${id}: ${err.message}`);
         }
       }
 
-      console.log(`📄 Trovati ${results.length} manuali totali per Maxhub`);
+      console.log(`📄 Totale manuali trovati per Maxhub: ${results.length}`);
       return results;
     }
 
