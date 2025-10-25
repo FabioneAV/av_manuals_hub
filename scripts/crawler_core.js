@@ -1,17 +1,20 @@
 import axios from "axios";
 
-const BASE_URL = "https://sgp-cstore-pub.maxhub.com/maxhub_global_public/api";
+const BASE_URL = "https://www.maxhub.com/api";
 const REGION = "eu";
 
-// Headers per simulare un browser (evita 403)
+// Headers realistici per simulare chiamate da www.maxhub.com
 const HEADERS = {
   "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
   "Accept": "application/json, text/plain, */*",
   "Accept-Language": "en-US,en;q=0.9",
+  "Referer": "https://www.maxhub.com/eu/resource-center/",
   "Origin": "https://www.maxhub.com",
-  "Referer": "https://www.maxhub.com/",
-  "Sec-Fetch-Site": "cross-site",
+  "X-Requested-With": "XMLHttpRequest",
+  "Sec-Fetch-Site": "same-origin",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Dest": "empty",
 };
 
 /**
@@ -21,7 +24,7 @@ export async function crawlSite() {
   console.log("📦 Avvio crawling per brand: Maxhub...");
 
   try {
-    // 1️⃣ Recupera lista prodotti
+    // 1️⃣ Recupera lista prodotti (GET)
     console.log("📡 Fase 1: recupero lista prodotti...");
     const listRes = await axios.get(
       `${BASE_URL}/v1/api/resource/list?region=${REGION}&page=1&size=200`,
@@ -39,14 +42,14 @@ export async function crawlSite() {
       console.log(`\n📘 Analisi prodotto: ${product.name} (${productId})`);
 
       try {
-        // 2a️⃣ Recupera struttura dettagliata (menus)
+        // 2a️⃣ Recupera struttura dettagliata
         const detailRes = await axios.get(
           `${BASE_URL}/v1/api/resource/detail?id=${productId}`,
           { headers: HEADERS }
         );
         const menus = detailRes.data?.data?.menus || [];
 
-        // 2b️⃣ Estrai tutti gli ID che iniziano con "fileList_"
+        // 2b️⃣ Estrai tutti i fileList_
         const fileListIds = [];
         const traverse = (nodes) => {
           for (const node of nodes) {
@@ -63,7 +66,7 @@ export async function crawlSite() {
 
         console.log(`📂 Trovati ${fileListIds.length} gruppi di file per ${product.name}`);
 
-        // 3️⃣ Recupera PDF da ciascun gruppo
+        // 3️⃣ Recupera PDF da ciascun fileList
         for (const fileListId of fileListIds) {
           const contentRes = await axios.get(
             `${BASE_URL}/v1/api/resource/content?id=${fileListId}`,
