@@ -46,7 +46,11 @@ export async function crawlSite(config) {
           if (!data) continue;
 
           // ✅ Estrarre il contenuto HTML dal campo "details"
-         const details = data.details;
+          console.log(`🧠 Chiavi nel campo data per ID ${id}:`, Object.keys(data));
+if (data.fileList || data.files) {
+  console.log(`📎 Trovato fileList o files per ID ${id}:`, JSON.stringify(data.fileList || data.files).substring(0, 400));
+}
+          const details = data.details;
 
 if (!details) {
   console.warn(`⚠️ Nessun campo "details" per ID ${id}`);
