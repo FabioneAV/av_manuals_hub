@@ -2,22 +2,15 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
 
-/**
- * Funzione generica per il crawling di siti AV
- * @param {Object} config - configurazione del brand
- * @param {string} config.brand - nome del brand
- * @param {string} config.url - URL della pagina principale o API
- */
 export async function crawlSite(config) {
   console.log(`🔍 Analisi sito per ${config.brand}...`);
   const results = [];
 
   try {
-    // ✅ CASO SPECIALE: MAXHUB (usa API dedicate e pagine per prodotto)
+    // ✅ CASO SPECIALE: MAXHUB
     if (config.brand.toLowerCase() === "maxhub") {
       console.log("📡 Fase 1: recupero lista prodotti...");
 
-      // 1️⃣ Recupera la pagina principale con tutti i link ai prodotti
       const mainPage = await axios.get("https://www.maxhub.com/eu/resource-center/", {
         headers: { "User-Agent": "Mozilla/5.0 (AVManualsBot)" },
       });
@@ -25,7 +18,6 @@ export async function crawlSite(config) {
       const $ = cheerio.load(mainPage.data);
       const productIds = [];
 
-      // 2️⃣ Estrae tutti gli ID prodotto dalle URL tipo /resource-center-detail/?id=xxxx
       $('a[href*="/resource-center-detail/?id="]').each((_, el) => {
         const href = $(el).attr("href");
         const match = href.match(/id=([a-z0-9\-]+)/i);
@@ -34,7 +26,6 @@ export async function crawlSite(config) {
 
       console.log(`🔎 Trovati ${productIds.length} prodotti Maxhub`);
 
-      // 3️⃣ Cicla su ciascun prodotto per recuperare i file PDF associati
       for (const id of productIds) {
         try {
           const res = await axios.post(
@@ -51,26 +42,23 @@ export async function crawlSite(config) {
             }
           );
 
-          // ✅ Adattamento al nuovo formato JSON di Maxhub
-          const files =
-            res.data?.data?.fileList ||
-            res.data?.fileList ||
-            [];
+          const data = res.data?.data;
+          if (!data) continue;
 
-          if (!Array.isArray(files)) {
-            console.warn(`⚠️ Nessun fileList valido per ID ${id}`);
-            continue;
-          }
+          // ✅ Gestisce i vari formati di dati
+          const fileLists = [];
 
-          // 4️⃣ Aggiunge ogni PDF trovato all’elenco dei risultati
-          for (const f of files) {
-            if (!f?.fileUrl?.endsWith(".pdf")) continue;
+          if (Array.isArray(data.fileList)) fileLists.push(...data.fileList);
+          if (Array.isArray(data.resourceList)) fileLists.push(...data.resourceList);
+
+          for (const f of fileLists) {
+            const url = f.fileUrl || f.url || f.path;
+            if (!url || !url.endsWith(".pdf")) continue;
+
             results.push({
               brand: "Maxhub",
-              product_name: f.title || "Manual",
-              pdf_url: f.fileUrl.startsWith("http")
-                ? f.fileUrl
-                : `https://www.maxhub.com${f.fileUrl}`,
+              product_name: f.title || f.name || "Manual",
+              pdf_url: url.startsWith("http") ? url : `https://www.maxhub.com${url}`,
               source_url: `https://www.maxhub.com/eu/resource-center-detail/?id=${id}`,
               last_sync: new Date().toISOString(),
             });
@@ -84,7 +72,7 @@ export async function crawlSite(config) {
       return results;
     }
 
-    // ✅ METODO GENERICO (per altri brand con pagine pubbliche HTML)
+    // ✅ GENERICO PER ALTRI BRAND
     const response = await axios.get(config.url, {
       headers: { "User-Agent": "Mozilla/5.0 (AVManualsBot)" },
       timeout: 20000,
