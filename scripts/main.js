@@ -27,25 +27,25 @@ async function main() {
     console.log(`\n📦 Avvio crawling per brand: ${config.brand}...`);
 
     try {
-      // 🧠 Passiamo solo il nome del brand (stringa), non tutto l’oggetto
-      const results = await crawlSite(config.brand);
+  // 🧠 esegue il crawler con tutta la config
+  const results = await crawlSite(config);
 
-      if (!results || results.length === 0) {
-        console.warn(`⚠️ Nessun manuale trovato per ${config.brand}`);
-        continue;
-      }
+  if (!results || results.length === 0) {
+    console.warn(`⚠️ Nessun manuale trovato per ${config.brand}`);
+    continue;
+  }
 
-      // 📄 Salva output locale
-      const outputFile = path.join(__dirname, `../output_${config.brand}.json`);
-      fs.writeFileSync(outputFile, JSON.stringify(results, null, 2));
-      console.log(`💾 Salvati ${results.length} risultati in ${outputFile}`);
+  // 📄 Salva output locale
+  const outputFile = path.join(__dirname, `../output_${config.brand}.json`);
+  fs.writeFileSync(outputFile, JSON.stringify(results, null, 2));
+  console.log(`💾 Salvati ${results.length} risultati in ${outputFile}`);
 
-      // ☁️ Carica su Supabase
-      await uploadManuals(outputFile);
-      console.log(`✅ Upload completato per ${config.brand}`);
-    } catch (err) {
-      console.error(`❌ Errore con ${config.brand}:`, err.message);
-    }
+  // ☁️ Carica su Supabase
+  await uploadManuals(outputFile);
+  console.log(`✅ Upload completato per ${config.brand}`);
+} catch (err) {
+  console.error(`❌ Errore con ${config.brand}:`, err.message);
+}
   }
 
   console.log("\n🎉 Tutti i brand processati con successo!");
