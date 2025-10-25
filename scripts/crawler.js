@@ -1,47 +1,40 @@
+// scripts/crawler_core.js
 import axios from "axios";
 import * as cheerio from "cheerio";
-import { createHash } from "./utils.js";
-import fs from "fs";
 
 export async function crawlSite(config) {
-  const visited = new Set();
+  console.log(`🔍 Analisi sito per ${config.brand}...`);
   const results = [];
 
-  async function crawl(url, depth = 0) {
-    if (visited.has(url) || depth > config.maxDepth) return;
-    visited.add(url);
+  try {
+    const response = await axios.get(config.url, {
+      headers: { "User-Agent": "Mozilla/5.0 (AVManualsBot)" },
+      timeout: 15000,
+    });
 
-    try {
-      const res = await axios.get(url, { timeout: 10000 });
-      const $ = cheerio.load(res.data);
-      const links = $("a[href]").map((_, el) => $(el).attr("href")).get();
+    const $ = cheerio.load(response.data);
 
-      for (const link of links) {
-        const absUrl = new URL(link, url).href;
-        if (absUrl.match(config.pdfPattern)) {
-          results.push({
-            brand: config.brand,
-            url: absUrl,
-            file_hash: createHash(config.brand, absUrl),
-            fetched_at: new Date().toISOString(),
-            source: config.followDomains[0]
-          });
-        } else if (
-          config.followDomains.some(d => absUrl.includes(d))
-        ) {
-          await crawl(absUrl, depth + 1);
-        }
-      }
-    } catch (err) {
-      console.log(`Errore su ${url}: ${err.message}`);
-    }
+    // Cerca tutti i link a file PDF
+    $("a[href$='.pdf']").each((_, el) => {
+      const pdfUrl = $(el).attr("href");
+      const title = $(el).text().trim() || "Manual";
+      const absoluteUrl = pdfUrl.startsWith("http")
+        ? pdfUrl
+        : new URL(pdfUrl, config.url).href;
+
+      results.push({
+        brand: config.brand,
+        product_name: title,
+        pdf_url: absoluteUrl,
+        source_url: config.url,
+        last_sync: new Date().toISOString(),
+      });
+    });
+
+    console.log(`📄 Trovati ${results.length} manuali per ${config.brand}`);
+    return results;
+  } catch (err) {
+    console.error(`❌ Errore durante il crawling di ${config.brand}:`, err.message);
+    return [];
   }
-
-  for (const start of config.startUrls) {
-    await crawl(start);
-  }
-
-  console.log(`✅ ${results.length} PDF trovati per ${config.brand}`);
-  fs.writeFileSync(`output_${config.brand}.json`, JSON.stringify(results, null, 2));
-  return results;
 }
