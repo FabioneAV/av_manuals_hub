@@ -46,14 +46,23 @@ export async function crawlSite(config) {
           if (!data) continue;
 
           // ✅ Estrarre il contenuto HTML dal campo "details"
-         const html = data.details || "";
-if (!html) {
+         const details = data.details;
+
+if (!details) {
   console.warn(`⚠️ Nessun campo "details" per ID ${id}`);
   continue;
 }
 
-// 👇 DEBUG: vediamo cosa contiene
-console.log(`🧾 Anteprima campo "details" per ID ${id}:`, html.substring(0, 500).replace(/\s+/g, " "));
+if (typeof details === "string") {
+  console.log(`🧾 Campo details (stringa) per ID ${id}:`, details.substring(0, 400).replace(/\s+/g, " "));
+} else {
+  console.log(`🧾 Campo details (tipo ${typeof details}) per ID ${id}:`, JSON.stringify(details, null, 2).substring(0, 400));
+}
+
+const html =
+  typeof details === "string"
+    ? details
+    : JSON.stringify(details);
 
 const $details = cheerio.load(html);
           let found = 0;
