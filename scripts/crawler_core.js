@@ -3,7 +3,7 @@ import axios from "axios";
 const BASE_URL = "https://www.maxhub.com/api";
 const REGION = "eu";
 
-export async function crawlMaxhub() {
+export async function crawlSite() {
   console.log("📦 Avvio crawling per brand: Maxhub...");
 
   // 1️⃣ Recupera lista prodotti
@@ -80,5 +80,5 @@ export async function crawlMaxhub() {
 
 // Per test locale
 if (process.argv[1].includes("crawler_core.js")) {
-  crawlMaxhub().then(() => console.log("✅ Crawling completato"));
+  crawlSite().then(() => console.log("✅ Crawling completato"));
 }
