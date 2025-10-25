@@ -1,26 +1,11 @@
+// scripts/crawler_core.js
 import puppeteer from "puppeteer";
 import axios from "axios";
 import fs from "fs";
-import { createClient } from "@supabase/supabase-js";
 
-// 🔐 Inizializzazione Supabase con schema esplicito
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { db: { schema: "public" } } // 👈 cambia in "api" se la tua tabella è lì
-);
-
-// Funzione di attesa compatibile con Puppeteer v23+
-async function wait(page, ms) {
-  await page.waitForFunction(
-    (timeout) => new Promise((resolve) => setTimeout(resolve, timeout)),
-    {}, // options
-    ms
-  );
-}
-
-export async function crawlSite(brandName) {
-  console.log(`📦 Avvio crawling per brand: ${brandName} (browser mode)...`);
+export async function crawlSite(config) {
+  const { brand, url } = config;
+  console.log(`📦 Avvio crawling per brand: ${brand} (browser mode)...`);
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -28,80 +13,74 @@ export async function crawlSite(brandName) {
   });
 
   const page = await browser.newPage();
-  const allManuals = [];
+  const results = [];
 
   try {
     console.log("🌍 Apertura del Resource Center...");
-    await page.goto("https://www.maxhub.com/eu/resource-center/", {
-      waitUntil: "networkidle2",
-      timeout: 60000,
-    });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
     console.log("🔍 Estrazione link dei prodotti...");
-    const productLinks = await page.$$eval(".product-card a", (links) =>
-      links.map((a) => ({
-        title: a.textContent.trim(),
-        href: a.href,
-      }))
+    await page.waitForFunction(
+      () => document.querySelectorAll('a[href*="/resource-center-detail/?id="]').length > 0,
+      { timeout: 15000 }
     );
 
-    console.log(`🔎 Trovati ${productLinks.length} prodotti Maxhub\n`);
+    const productLinks = await page.$$eval(
+      'a[href*="/resource-center-detail/?id="]',
+      (links) =>
+        links.map((a) => ({
+          title: a.textContent.trim() || a.getAttribute("title") || "Unknown Product",
+          href: a.href,
+        }))
+    );
 
-    // Cicla su ogni prodotto
-    for (let i = 0; i < productLinks.length; i++) {
-      const { title, href } = productLinks[i];
-      console.log(`📘 (${i + 1}/${productLinks.length}) Analisi: ${title}`);
+    console.log(`🔎 Trovati ${productLinks.length} prodotti ${brand}`);
+
+    let counter = 0;
+    for (const link of productLinks) {
+      counter++;
+      console.log(`\n📘 (${counter}/${productLinks.length}) Analisi: ${link.title}`);
 
       try {
-        await page.goto(href, { waitUntil: "networkidle2", timeout: 60000 });
-        await wait(page, 2000); // 👈 sostituisce page.waitForTimeout
+        await page.goto(link.href, { waitUntil: "domcontentloaded", timeout: 60000 });
+        await new Promise((r) => setTimeout(r, 1500));
 
-        const pageContent = await page.content();
-
-        // Cerca tutti i link PDF nella pagina
-        const pdfUrls = await page.$$eval('a[href$=".pdf"]', (links) =>
+        // Estrai i PDF
+        const pdfLinks = await page.$$eval('a[href$=".pdf"]', (links) =>
           links.map((a) => ({
-            name: a.textContent.trim() || "Documento PDF",
+            name: a.textContent.trim() || a.getAttribute("title") || "Manual",
             url: a.href,
           }))
         );
 
-        for (const pdf of pdfUrls) {
+        for (const pdf of pdfLinks) {
           console.log(`📄 PDF trovato: ${pdf.name}`);
-          allManuals.push({
-            brand: brandName,
-            product: title,
-            url: pdf.url,
+          results.push({
+            brand,
+            product: link.title,
             name: pdf.name,
+            url: pdf.url,
           });
         }
 
-        await wait(page, 1500); // 👈 sostituisce page.waitForTimeout
+        if (pdfLinks.length === 0) {
+          console.warn(`⚠️ Nessun PDF trovato su ${link.title}`);
+        }
+
       } catch (err) {
-        console.log(`⚠️ Errore su ${title}: ${err.message}`);
-        continue;
+        console.error(`⚠️ Errore su ${link.title}: ${err.message}`);
       }
+
+      // attesa di sicurezza tra una pagina e l’altra
+      await new Promise((r) => setTimeout(r, 1000));
     }
 
-    console.log(`📄 Totale PDF trovati: ${allManuals.length}`);
-
-    // Salvataggio locale del risultato
-    const outputFile = `output_${brandName}.json`;
-    fs.writeFileSync(outputFile, JSON.stringify(allManuals, null, 2));
-    console.log(`💾 Salvati ${allManuals.length} risultati in ${outputFile}`);
-
-    // Upload su Supabase
-    console.log(`☁️ Upload di ${allManuals.length} manuali su Supabase...`);
-    const { error } = await supabase.from("manuals").insert(allManuals);
-
-    if (error) {
-      console.error("❌ Errore durante l'upload su Supabase:", error.message);
-    } else {
-      console.log(`✅ Upload completato per ${brandName}`);
-    }
-  } catch (error) {
-    console.error(`❌ Errore fatale nel crawler ${brandName}:`, error.message);
+  } catch (err) {
+    console.error(`❌ Errore fatale nel crawler ${brand}:`, err.message);
   } finally {
     await browser.close();
   }
+
+  console.log(`\n📄 Totale PDF trovati: ${results.length}`);
+  return results;
 }
