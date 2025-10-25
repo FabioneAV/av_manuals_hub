@@ -1,33 +1,32 @@
 import axios from "axios";
 
-const BASE_URL = "https://www.maxhub.com/api";
+const BASE_URL = "https://sgp-cstore-pub.maxhub.com/maxhub_global_public/api";
 const REGION = "eu";
 
-// Headers realistici per simulare chiamate da www.maxhub.com
 const HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
   "Accept": "application/json, text/plain, */*",
   "Accept-Language": "en-US,en;q=0.9",
-  "Referer": "https://www.maxhub.com/eu/resource-center/",
+  "Content-Type": "application/json",
   "Origin": "https://www.maxhub.com",
+  "Referer": "https://www.maxhub.com/eu/resource-center/",
   "X-Requested-With": "XMLHttpRequest",
-  "Sec-Fetch-Site": "same-origin",
-  "Sec-Fetch-Mode": "cors",
-  "Sec-Fetch-Dest": "empty",
 };
 
 /**
- * Crawling ufficiale dei manuali Maxhub
+ * Crawler Maxhub: ricava tutti i PDF dal Resource Center ufficiale
  */
 export async function crawlSite() {
   console.log("📦 Avvio crawling per brand: Maxhub...");
 
   try {
-    // 1️⃣ Recupera lista prodotti (GET)
+    // 1️⃣ Recupera lista prodotti
     console.log("📡 Fase 1: recupero lista prodotti...");
-    const listRes = await axios.get(
-      `${BASE_URL}/v1/api/resource/list?region=${REGION}&page=1&size=200`,
+
+    const listRes = await axios.post(
+      `${BASE_URL}/v1/api/resource/list`,
+      { region: REGION, page: 1, size: 200 },
       { headers: HEADERS }
     );
 
@@ -42,11 +41,13 @@ export async function crawlSite() {
       console.log(`\n📘 Analisi prodotto: ${product.name} (${productId})`);
 
       try {
-        // 2a️⃣ Recupera struttura dettagliata
-        const detailRes = await axios.get(
-          `${BASE_URL}/v1/api/resource/detail?id=${productId}`,
+        // 2a️⃣ Recupera struttura dettagliata (menus)
+        const detailRes = await axios.post(
+          `${BASE_URL}/v1/api/resource/detail`,
+          { id: productId },
           { headers: HEADERS }
         );
+
         const menus = detailRes.data?.data?.menus || [];
 
         // 2b️⃣ Estrai tutti i fileList_
@@ -68,10 +69,12 @@ export async function crawlSite() {
 
         // 3️⃣ Recupera PDF da ciascun fileList
         for (const fileListId of fileListIds) {
-          const contentRes = await axios.get(
-            `${BASE_URL}/v1/api/resource/content?id=${fileListId}`,
+          const contentRes = await axios.post(
+            `${BASE_URL}/v1/api/resource/content`,
+            { id: fileListId },
             { headers: HEADERS }
           );
+
           const details = contentRes.data?.data?.details || [];
 
           for (const d of details) {
