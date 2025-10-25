@@ -3,6 +3,17 @@ import axios from "axios";
 const BASE_URL = "https://sgp-cstore-pub.maxhub.com/maxhub_global_public/api";
 const REGION = "eu";
 
+// Headers per simulare un browser (evita 403)
+const HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Origin": "https://www.maxhub.com",
+  "Referer": "https://www.maxhub.com/",
+  "Sec-Fetch-Site": "cross-site",
+};
+
 /**
  * Crawling ufficiale dei manuali Maxhub
  */
@@ -10,10 +21,11 @@ export async function crawlSite() {
   console.log("📦 Avvio crawling per brand: Maxhub...");
 
   try {
-    // 1️⃣ Recupera lista prodotti (GET, non POST)
+    // 1️⃣ Recupera lista prodotti
     console.log("📡 Fase 1: recupero lista prodotti...");
     const listRes = await axios.get(
-      `${BASE_URL}/v1/api/resource/list?region=${REGION}&page=1&size=200`
+      `${BASE_URL}/v1/api/resource/list?region=${REGION}&page=1&size=200`,
+      { headers: HEADERS }
     );
 
     const products = listRes.data?.data?.list || [];
@@ -29,7 +41,8 @@ export async function crawlSite() {
       try {
         // 2a️⃣ Recupera struttura dettagliata (menus)
         const detailRes = await axios.get(
-          `${BASE_URL}/v1/api/resource/detail?id=${productId}`
+          `${BASE_URL}/v1/api/resource/detail?id=${productId}`,
+          { headers: HEADERS }
         );
         const menus = detailRes.data?.data?.menus || [];
 
@@ -53,7 +66,8 @@ export async function crawlSite() {
         // 3️⃣ Recupera PDF da ciascun gruppo
         for (const fileListId of fileListIds) {
           const contentRes = await axios.get(
-            `${BASE_URL}/v1/api/resource/content?id=${fileListId}`
+            `${BASE_URL}/v1/api/resource/content?id=${fileListId}`,
+            { headers: HEADERS }
           );
           const details = contentRes.data?.data?.details || [];
 
