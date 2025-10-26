@@ -4,18 +4,20 @@ import path from "path";
 import mime from "mime-types";
 import { createClient } from "@supabase/supabase-js";
 
-// 🔐 Crea il client Supabase (standard)
+// 🔐 Crea il client Supabase (per Storage)
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// 🔁 client REST admin per accesso diretto allo schema public
+// 🔁 client REST admin per accesso diretto allo schema `api`
 const adminUrl = `${process.env.SUPABASE_URL}/rest/v1/`;
 const adminHeaders = {
   apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-  Prefer: "resolution=ignore-duplicates",
+  "Content-Type": "application/json",
+  "Prefer": "return=minimal",
+  "Accept-Profile": "api",
 };
 
 // 🧮 funzione per calcolare hash SHA256 (per deduplica)
@@ -33,7 +35,7 @@ async function fetchWithRetry(url, retries = 3, delay = 2000) {
     } catch (err) {
       console.warn(`⚠️ Tentativo ${i + 1} errore di rete: ${err.message}`);
     }
-    await new Promise(r => setTimeout(r, delay));
+    await new Promise((r) => setTimeout(r, delay));
   }
   throw new Error(`Impossibile scaricare ${url} dopo ${retries} tentativi`);
 }
@@ -43,6 +45,7 @@ export async function uploadManuals(outputPath) {
   const manuals = JSON.parse(fs.readFileSync(outputPath, "utf8"));
   const bucketName = "av_manuals";
   let uploadedCount = 0;
+  let skippedCount = 0;
   let failedCount = 0;
 
   for (const manual of manuals) {
@@ -58,7 +61,7 @@ export async function uploadManuals(outputPath) {
       const storagePath = `${manual.brand}/${safeFileName}`;
       const contentType = mime.lookup(fileExt) || "application/pdf";
 
-      // 🔍 1️⃣ Upload su Storage
+      // 🔍 1️⃣ Upload su Storage (deduplica lato storage)
       const { data: existing } = await supabase.storage
         .from(bucketName)
         .list(manual.brand, { search: safeFileName });
@@ -74,33 +77,40 @@ export async function uploadManuals(outputPath) {
         console.log(`✅ Caricato su bucket: ${safeFileName}`);
       }
 
-      // 🧠 2️⃣ Inserimento metadati (via REST admin)
-      const response = await fetch(`${adminUrl}av_manuals`, {
-  method: "POST",
-  headers: {
-    "apikey": process.env.SUPABASE_SERVICE_ROLE_KEY,
-    "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-    "Content-Type": "application/json",
-    "Prefer": "return=minimal",
-    "Accept-Profile": "api" // 👈 dice a Supabase di usare lo schema API
-  },
-  body: JSON.stringify({
-    brand: manual.brand,
-    product: manual.product || null,
-    file_name: manual.title || safeFileName,
-    file_url: `${process.env.SUPABASE_URL}/storage/v1/object/public/${bucketName}/${storagePath}`,
-    source_url: manual.url,
-    checksum,
-  })
-});
+      // 🧠 2️⃣ Inserimento metadati nel DB (via REST API schema `api`)
+      const dbResponse = await fetch(`${adminUrl}av_manuals`, {
+        method: "POST",
+        headers: adminHeaders,
+        body: JSON.stringify({
+          brand: manual.brand,
+          product: manual.product || null,
+          file_name: manual.title || safeFileName,
+          file_url: `${process.env.SUPABASE_URL}/storage/v1/object/public/${bucketName}/${storagePath}`,
+          source_url: manual.url,
+          checksum,
+        }),
+      });
 
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Errore DB REST: ${response.status} - ${text}`);
+      if (!dbResponse.ok) {
+        const errorText = await dbResponse.text();
+
+        // ✅ deduplica: checksum già presente → solo log informativo
+        if (
+          dbResponse.status === 409 ||
+          errorText.includes("duplicate key value") ||
+          errorText.includes("23505")
+        ) {
+          console.log(`↩️ Manuale già presente nel DB (checksum duplicato): ${safeFileName}`);
+          skippedCount++;
+          continue;
+        }
+
+        throw new Error(`Errore DB REST: ${dbResponse.status} - ${errorText}`);
       }
 
       uploadedCount++;
       console.log(`🆕 Inserito nel DB: ${safeFileName}`);
+
     } catch (err) {
       failedCount++;
       console.error(`❌ Errore durante upload manuale: ${err.message}`);
@@ -108,6 +118,6 @@ export async function uploadManuals(outputPath) {
   }
 
   console.log(`\n🎉 Upload completato!`);
-  console.log(`📊 Totale caricati: ${uploadedCount} | Falliti: ${failedCount}`);
+  console.log(`📊 Totale caricati: ${uploadedCount} | Duplicati ignorati: ${skippedCount} | Falliti: ${failedCount}`);
   console.log(`🔗 Inserimento su: ${adminUrl}av_manuals`);
 }
