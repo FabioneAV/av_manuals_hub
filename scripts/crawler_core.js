@@ -1,7 +1,7 @@
-// scripts/crawler_core.js
 import puppeteer from "puppeteer";
 import axios from "axios";
 import fs from "fs";
+import path from "path";
 
 export async function crawlSite(config) {
   const { brand, url } = config;
@@ -40,29 +40,32 @@ export async function crawlSite(config) {
 
     console.log(`🔎 Trovati ${productLinks.length} prodotti ${brand}`);
 
-    // Cicla ogni prodotto
     let count = 1;
     for (const product of productLinks) {
       console.log(`\n📘 (${count++}/${productLinks.length}) Analisi: ${product.title}`);
 
       try {
         await page.goto(product.href, { waitUntil: "domcontentloaded", timeout: 45000 });
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 1200));
 
-        // Cerca link PDF
+        // Cerca PDF nel DOM
         const pdfLinks = await page.$$eval('a[href$=".pdf"]', (anchors) =>
           anchors.map((a) => ({
-            name: a.textContent.trim() || "Manual",
+            name:
+              a.href.split("/").pop().replace(/_/g, " ").replace(/\.pdf.*/i, "") ||
+              a.textContent.trim() ||
+              "Manual",
             href: a.href,
           }))
         );
 
-        // Ottieni la dimensione del file (solo HEAD request, no download)
         for (const pdf of pdfLinks) {
           let size = 0;
           try {
             const res = await axios.head(pdf.href);
-            size = res.headers["content-length"] ? parseInt(res.headers["content-length"]) : 0;
+            size = res.headers["content-length"]
+              ? parseInt(res.headers["content-length"])
+              : 0;
           } catch (_) {}
 
           console.log(`📄 PDF trovato: ${pdf.name}`);
@@ -86,13 +89,14 @@ export async function crawlSite(config) {
 
     console.log(`\n📄 Totale PDF trovati (prima della deduplica): ${results.length}`);
 
-    // 🔁 Deduplicazione locale (URL + size)
-    const outPath = `output_${brand}.json`;
+    // 🧠 Deduplicazione intelligente
+    const outPath = path.join(process.cwd(), `output_${brand}.json`);
     let previous = [];
 
     if (fs.existsSync(outPath)) {
       try {
         previous = JSON.parse(fs.readFileSync(outPath, "utf8"));
+        console.log(`📚 Trovati ${previous.length} manuali precedenti.`);
       } catch {
         console.warn("⚠️ File output precedente corrotto o non leggibile, verrà sovrascritto.");
       }
@@ -111,12 +115,13 @@ export async function crawlSite(config) {
       console.log("✅ Nessun nuovo manuale trovato, file invariato.");
     }
 
-    // Mostra riepilogo leggibile
+    // Mostra anteprima dei nuovi
     const preview = newResults.slice(0, 10);
     if (preview.length > 0) {
       console.log("\n📋 Anteprima dei nuovi manuali trovati:");
       preview.forEach((r) => console.log(`  • ${r.manual_name} (${r.product})`));
-      if (newResults.length > 10) console.log(`  ... e altri ${newResults.length - 10} manuali.`);
+      if (newResults.length > 10)
+        console.log(`  ... e altri ${newResults.length - 10} manuali.`);
     }
 
   } catch (err) {
