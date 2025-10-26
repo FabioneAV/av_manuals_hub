@@ -2,7 +2,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { crawlSite } from "./crawler_core.js";
+import { crawlMaxhubManuals as crawlSite } from "./crawler_core.js";
 import { uploadManuals } from "./supabase_upload.js";
 
 const __filename = fileURLToPath(import.meta.url);
