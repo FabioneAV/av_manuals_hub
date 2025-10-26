@@ -6,7 +6,14 @@ import mime from "mime-types";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    db: {
+      schema: "public", // ✅ forza l'uso dello schema public
+    },
+  }
+);
+
 );
 
 // 🧮 Calcola hash SHA256 (serve per deduplicare i file)
