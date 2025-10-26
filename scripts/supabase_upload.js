@@ -18,7 +18,7 @@ export async function uploadManuals(outputPath) {
   console.log(`☁️ Upload dei manuali verso Supabase...`);
   const manuals = JSON.parse(fs.readFileSync(outputPath, "utf8"));
 
-  const bucketName = "manuals";
+  const bucketName = "av_manuals";
 
   for (const manual of manuals) {
     try {
