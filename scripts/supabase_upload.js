@@ -3,28 +3,17 @@ import crypto from "crypto";
 import path from "path";
 import mime from "mime-types";
 import { createClient } from "@supabase/supabase-js";
-import pkg from "pg";
-const { Client } = pkg;
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: { persistSession: false },
+    db: { schema: "public" }, // ✅ usa lo schema corretto
+  }
 );
 
-// 🔐 Connessione diretta a Postgres per bypassare il limite dello schema “api”
-const pgClient = new Client({
-  connectionString: `${process.env.SUPABASE_URL.replace(
-    "https://",
-    "postgresql://postgres:"
-  )}${process.env.SUPABASE_SERVICE_ROLE_KEY}@${process.env.SUPABASE_URL
-    .replace("https://", "")
-    .replace(".supabase.co", ".supabase.co:5432/postgres")}`,
-  ssl: { rejectUnauthorized: false },
-});
-
-await pgClient.connect();
-
-// 🧮 funzione per calcolare hash SHA256 del file (per deduplica)
+// 🧮 Calcola hash SHA256 per deduplica
 function generateChecksum(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
@@ -52,15 +41,17 @@ export async function uploadManuals(outputPath) {
       const storagePath = `${manual.brand}/${safeFileName}`;
       const contentType = mime.lookup(fileExt) || "application/pdf";
 
-      // 1️⃣ Upload su Storage
-      const { data: existing } = await supabase.storage
+      // 1️⃣ Upload nel bucket se non esiste già
+      const { data: existing } = await supabase
+        .storage
         .from(bucketName)
         .list(manual.brand, { search: safeFileName });
 
       if (existing && existing.length > 0) {
         console.log(`↩️ File già presente su bucket: ${safeFileName}`);
       } else {
-        const { error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase
+          .storage
           .from(bucketName)
           .upload(storagePath, fileBuffer, { contentType, upsert: false });
 
@@ -68,28 +59,33 @@ export async function uploadManuals(outputPath) {
         console.log(`✅ Caricato su bucket: ${safeFileName}`);
       }
 
-      // 2️⃣ Inserimento diretto in PostgreSQL (schema public)
-      await pgClient.query(
-        `INSERT INTO public.av_manuals 
-         (brand, product, file_name, file_url, source_url, checksum)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (checksum) DO NOTHING`,
-        [
-          manual.brand,
-          manual.product || null,
-          manual.title || safeFileName,
-          `${process.env.SUPABASE_URL}/storage/v1/object/public/${bucketName}/${storagePath}`,
-          manual.url,
-          checksum,
-        ]
-      );
+      // 2️⃣ Inserisci nel DB via API REST (schema “public”)
+      const { error: insertError } = await supabase
+        .from("av_manuals")
+        .insert([
+          {
+            brand: manual.brand,
+            product: manual.product || null,
+            file_name: manual.title || safeFileName,
+            file_url: `${process.env.SUPABASE_URL}/storage/v1/object/public/${bucketName}/${storagePath}`,
+            source_url: manual.url,
+            checksum,
+          },
+        ]);
 
-      console.log(`🆕 Aggiunto al DB: ${safeFileName}`);
+      if (insertError) {
+        if (insertError.message.includes("duplicate key")) {
+          console.log(`↩️ Manuale già esistente in DB: ${safeFileName}`);
+        } else {
+          throw insertError;
+        }
+      } else {
+        console.log(`🆕 Aggiunto al DB: ${safeFileName}`);
+      }
     } catch (err) {
       console.error(`❌ Errore durante upload manuale: ${err.message}`);
     }
   }
 
-  await pgClient.end();
   console.log(`\n🎉 Upload completato con deduplica su Supabase (DB + Storage).`);
 }
