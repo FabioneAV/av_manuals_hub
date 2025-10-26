@@ -2,8 +2,6 @@ import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
 export async function crawlSite(config) {
   console.log(`📦 Avvio crawling per brand: ${config.brand} (browser mode)...`);
 
@@ -18,25 +16,25 @@ export async function crawlSite(config) {
   try {
     console.log(`🌍 Apertura del Resource Center...`);
     await page.goto(config.url, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await wait(4000);
+    await page.waitForTimeout(5000);
 
     console.log(`🔍 Estrazione link dei prodotti...`);
-    const productLinks = await page.$$eval("a", (els) =>
-      els
-        .map((a) => a.href)
-        .filter((href) => href && href.includes("/products/"))
+    const products = await page.$$eval(".resource-item a", (els) =>
+      els.map((a) => ({
+        href: a.href,
+        title: a.innerText.trim(),
+      }))
     );
 
-    console.log(`🔎 Trovati ${productLinks.length} prodotti ${config.brand}`);
+    console.log(`🔎 Trovati ${products.length} prodotti ${config.brand}`);
 
-    let pdfCount = 0;
-    for (let i = 0; i < productLinks.length; i++) {
-      const link = productLinks[i];
-      console.log(`📘 (${i + 1}/${productLinks.length}) Analisi: ${link}`);
+    for (let i = 0; i < products.length; i++) {
+      const product = products[i];
+      console.log(`📘 (${i + 1}/${products.length}) Analisi: ${product.title || product.href}`);
 
       try {
-        await page.goto(link, { waitUntil: "domcontentloaded", timeout: 60000 });
-        await wait(2000);
+        await page.goto(product.href, { waitUntil: "domcontentloaded", timeout: 60000 });
+        await page.waitForTimeout(2000);
 
         const pdfLinks = await page.$$eval("a", (els) =>
           els
@@ -48,28 +46,25 @@ export async function crawlSite(config) {
         );
 
         if (pdfLinks.length === 0) {
-          console.log(`⚠️ Nessun PDF trovato per ${link}`);
+          console.log(`⚠️ Nessun PDF trovato per ${product.title}`);
           continue;
         }
 
         for (const pdf of pdfLinks) {
           results.push({
             brand: config.brand,
-            product: pdf.text || "Unknown Product",
-            title: path.basename(pdf.href).replace(/\.pdf.*/i, ""),
+            product: product.title || "Unknown Product",
+            title: pdf.text || path.basename(pdf.href),
             url: pdf.href,
           });
           console.log(`📄 PDF trovato: ${pdf.text || pdf.href}`);
-          pdfCount++;
         }
       } catch (err) {
-        console.warn(`⚠️ Errore su ${link}: ${err.message}`);
+        console.warn(`⚠️ Errore su ${product.href}: ${err.message}`);
       }
     }
 
-    console.log(`\n📄 Totale PDF trovati: ${pdfCount}`);
-
-    // salva output
+    console.log(`\n📄 Totale PDF trovati: ${results.length}`);
     const outputFile = path.join(path.resolve(), `output_${config.brand}.json`);
     fs.writeFileSync(outputFile, JSON.stringify(results, null, 2));
     console.log(`💾 Salvati ${results.length} risultati in ${outputFile}`);
