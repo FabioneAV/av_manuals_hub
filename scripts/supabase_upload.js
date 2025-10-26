@@ -75,7 +75,7 @@ export async function uploadManuals(outputPath) {
       }
 
       // 🧠 2️⃣ Inserimento metadati (via REST admin)
-      const response = await fetch(`${adminUrl}av_manuals`, {
+      const response = await fetch(`${adminUrl}av_manuals?schema=api`, {
         method: "POST",
         headers: {
           ...adminHeaders,
