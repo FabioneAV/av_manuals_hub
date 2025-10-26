@@ -18,10 +18,11 @@ jobs:
         with:
           node-version: 20
 
-      - name: 🧩 Install dependencies (with Puppeteer)
+      - name: 🧩 Install dependencies (with Puppeteer + pg)
         run: |
+          echo "📦 Installing dependencies..."
           npm install
-          npm install puppeteer
+          npm install puppeteer pg
           sudo apt-get update
           sudo apt-get install -y \
             libnss3 \
