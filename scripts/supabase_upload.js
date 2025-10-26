@@ -10,10 +10,8 @@ const supabase = createClient(
   {
     db: {
       schema: "public", // ✅ forza l'uso dello schema public
-    },
+    }
   }
-);
-
 );
 
 // 🧮 Calcola hash SHA256 (serve per deduplicare i file)
