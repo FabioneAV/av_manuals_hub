@@ -75,23 +75,24 @@ export async function uploadManuals(outputPath) {
       }
 
       // 🧠 2️⃣ Inserimento metadati (via REST admin)
-      const response = await fetch(`${adminUrl}av_manuals?schema=api`, {
-        method: "POST",
-        headers: {
-          ...adminHeaders,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify([
-          {
-            brand: manual.brand,
-            product: manual.product || null,
-            file_name: manual.title || safeFileName,
-            file_url: `${process.env.SUPABASE_URL}/storage/v1/object/public/${bucketName}/${storagePath}`,
-            source_url: manual.url,
-            checksum,
-          },
-        ]),
-      });
+      const response = await fetch(`${adminUrl}av_manuals`, {
+  method: "POST",
+  headers: {
+    "apikey": process.env.SUPABASE_SERVICE_ROLE_KEY,
+    "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+    "Content-Type": "application/json",
+    "Prefer": "return=minimal",
+    "Accept-Profile": "api" // 👈 dice a Supabase di usare lo schema API
+  },
+  body: JSON.stringify({
+    brand: manual.brand,
+    product: manual.product || null,
+    file_name: manual.title || safeFileName,
+    file_url: `${process.env.SUPABASE_URL}/storage/v1/object/public/${bucketName}/${storagePath}`,
+    source_url: manual.url,
+    checksum,
+  })
+});
 
       if (!response.ok) {
         const text = await response.text();
