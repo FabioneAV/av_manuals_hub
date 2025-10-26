@@ -9,7 +9,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// 🧮 funzione per calcolare hash SHA256 del file (per deduplica)
+// 🧮 Calcola hash SHA256 (serve per deduplicare i file)
 function generateChecksum(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
@@ -34,19 +34,22 @@ export async function uploadManuals(outputPath) {
       const fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
       const checksum = generateChecksum(fileBuffer);
       const fileExt = path.extname(fileName) || ".pdf";
-      const safeFileName = fileName.replace(/[^\w.-]/g, "_");
+      const safeFileName = decodeURIComponent(fileName).replace(/[^\w.-]/g, "_");
+      const brandFolder = manual.brand?.replace(/[^\w.-]/g, "_") || "unknown_brand";
 
-      const storagePath = `${manual.brand}/${safeFileName}`;
+      const storagePath = `${brandFolder}/${safeFileName}`;
       const contentType = mime.lookup(fileExt) || "application/pdf";
 
-      // 🧠 1️⃣ Upload nel bucket solo se non esiste già
-      const { data: existing } = await supabase
+      // 🧠 1️⃣ Verifica se già esiste nel bucket (deduplica su file)
+      const { data: existingFiles, error: listError } = await supabase
         .storage
         .from(bucketName)
-        .list(manual.brand, { search: safeFileName });
+        .list(brandFolder, { search: safeFileName });
 
-      if (existing && existing.length > 0) {
-        console.log(`↩️ File già presente: ${safeFileName}`);
+      if (listError) throw listError;
+
+      if (existingFiles && existingFiles.length > 0) {
+        console.log(`↩️ File già presente su bucket: ${safeFileName}`);
       } else {
         const { error: uploadError } = await supabase
           .storage
@@ -60,26 +63,34 @@ export async function uploadManuals(outputPath) {
         console.log(`✅ Caricato su bucket: ${safeFileName}`);
       }
 
-      // 🧠 2️⃣ Inserimento metadati nella tabella (deduplica automatica)
-      const { error: insertError } = await supabase
-        .from("av_manuals")
-        .insert({
-          brand: manual.brand,
-          product: manual.product || null,
-          file_name: manual.title || safeFileName,
-          file_url: `${process.env.SUPABASE_URL}/storage/v1/object/public/${bucketName}/${storagePath}`,
-          source_url: manual.url,
-          checksum,
-        })
-        .select();
+      // 🔗 URL finale (non pubblico ma accessibile via API se serve)
+      const publicUrl = `${process.env.SUPABASE_URL}/storage/v1/object/${bucketName}/${storagePath}`;
 
-      if (insertError) {
-        if (insertError.message.includes("duplicate key")) {
-          console.log(`↩️ Manuale già esistente in DB: ${safeFileName}`);
-        } else {
-          throw insertError;
-        }
+      // 🧠 2️⃣ Deduplica su database — prima controlla se checksum esiste
+      const { data: existingRow, error: selectError } = await supabase
+        .from("av_manuals")
+        .select("id")
+        .eq("checksum", checksum)
+        .maybeSingle();
+
+      if (selectError) throw selectError;
+
+      if (existingRow) {
+        console.log(`↩️ Manuale già presente in DB: ${safeFileName}`);
       } else {
+        const { error: insertError } = await supabase
+          .from("av_manuals")
+          .insert({
+            brand: manual.brand,
+            product: manual.product || null,
+            file_name: manual.title || safeFileName,
+            file_url: publicUrl,
+            source_url: manual.url,
+            checksum,
+            created_at: new Date().toISOString()
+          });
+
+        if (insertError) throw insertError;
         console.log(`🆕 Aggiunto al DB: ${safeFileName}`);
       }
 
@@ -88,5 +99,5 @@ export async function uploadManuals(outputPath) {
     }
   }
 
-  console.log(`\n🎉 Upload completato con deduplica automatica su Supabase.`);
+  console.log(`\n🎉 Upload completato con deduplica su Supabase (file + DB).`);
 }
