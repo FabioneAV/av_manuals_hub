@@ -28,7 +28,7 @@ async function main() {
 
     try {
   // 🧠 esegue il crawler con tutta la config
-  const results = await crawlSite(config.brand, config.url);
+  const results = await crawlSite(config);
 
   if (!results || results.length === 0) {
     console.warn(`⚠️ Nessun manuale trovato per ${config.brand}`);
