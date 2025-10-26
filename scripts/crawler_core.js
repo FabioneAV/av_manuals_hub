@@ -2,6 +2,10 @@ import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function crawlSite(config) {
   console.log(`📦 Avvio crawling per brand: ${config.brand} (browser mode)...`);
 
@@ -16,14 +20,16 @@ export async function crawlSite(config) {
   try {
     console.log(`🌍 Apertura del Resource Center...`);
     await page.goto(config.url, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForTimeout(5000);
+    await wait(5000);
 
     console.log(`🔍 Estrazione link dei prodotti...`);
-    const products = await page.$$eval(".resource-item a", (els) =>
-      els.map((a) => ({
-        href: a.href,
-        title: a.innerText.trim(),
-      }))
+    const products = await page.$$eval("a", (els) =>
+      els
+        .map((a) => ({
+          href: a.href,
+          title: a.innerText.trim(),
+        }))
+        .filter((a) => a.href.includes("resource-center-detail"))
     );
 
     console.log(`🔎 Trovati ${products.length} prodotti ${config.brand}`);
@@ -34,7 +40,7 @@ export async function crawlSite(config) {
 
       try {
         await page.goto(product.href, { waitUntil: "domcontentloaded", timeout: 60000 });
-        await page.waitForTimeout(2000);
+        await wait(2000);
 
         const pdfLinks = await page.$$eval("a", (els) =>
           els
@@ -42,7 +48,7 @@ export async function crawlSite(config) {
               href: a.href,
               text: a.innerText.trim(),
             }))
-            .filter((el) => el.href.toLowerCase().includes(".pdf"))
+            .filter((el) => el.href.toLowerCase().endsWith(".pdf"))
         );
 
         if (pdfLinks.length === 0) {
