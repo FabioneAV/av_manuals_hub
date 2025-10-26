@@ -8,16 +8,19 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v3
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install dependencies (with Puppeteer)
+      - name: 🧩 Install dependencies (with Puppeteer)
         run: |
-          npm install
+          npm ci
           npm install puppeteer
           sudo apt-get update
           sudo apt-get install -y \
@@ -37,9 +40,11 @@ jobs:
             libxshmfence1 \
             libgtk-3-0
 
-      - name: Run AV Manuals Sync
+      - name: 🚀 Run AV Manuals Sync
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NODE_ENV: production
         run: |
+          echo "Starting sync process..."
           node scripts/main.js
