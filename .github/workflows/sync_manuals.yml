@@ -20,7 +20,7 @@ jobs:
 
       - name: 🧩 Install dependencies (with Puppeteer)
         run: |
-          npm ci
+          npm install
           npm install puppeteer
           sudo apt-get update
           sudo apt-get install -y \
