@@ -1,142 +1,127 @@
-// scripts/crawler_core.js
-import puppeteer from "puppeteer";
-import axios from "axios";
 import fs from "fs";
 import path from "path";
+import puppeteer from "puppeteer";
 
-export async function crawlSite(config) {
-  const { brand, url } = config;
+// Utility di attesa
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export async function crawlMaxhubManuals(brand, baseUrl) {
   console.log(`📦 Avvio crawling per brand: ${brand} (browser mode)...`);
 
   const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--window-size=1920,1080",
-    ],
+    headless: "new",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
-
   const page = await browser.newPage();
+
   const results = [];
+  const visited = new Set();
 
   try {
-    console.log("🌍 Apertura del Resource Center...");
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+    console.log(`🌍 Apertura del Resource Center...`);
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await wait(2500);
 
-    console.log("🔍 Estrazione link dei prodotti...");
-    await page.waitForFunction(
-      () => document.querySelectorAll('a[href*="/resource-center-detail/?id="]').length > 0,
-      { timeout: 20000 }
-    );
+    // Scrolla per caricare tutti i prodotti
+    await autoScroll(page);
+    await wait(1500);
 
-    const productLinks = await page.$$eval('a[href*="/resource-center-detail/?id="]', (links) =>
-      links.map((a) => ({
-        title: a.textContent.trim() || a.getAttribute("title") || "Unknown Product",
-        href: a.href,
-      }))
+    console.log(`🔍 Estrazione link dei prodotti...`);
+    const productLinks = await page.$$eval("a", (links) =>
+      links
+        .map((a) => a.href)
+        .filter(
+          (href) =>
+            href &&
+            href.includes("maxhub.com") &&
+            (href.includes("/products/") || href.includes("details"))
+        )
     );
 
     console.log(`🔎 Trovati ${productLinks.length} prodotti ${brand}`);
 
-    let count = 1;
-    for (const product of productLinks) {
-      console.log(`\n📘 (${count++}/${productLinks.length}) Analisi: ${product.title}`);
+    let counter = 1;
+    for (const productUrl of productLinks) {
+      if (visited.has(productUrl)) continue;
+      visited.add(productUrl);
+
+      console.log(`\n📘 (${counter}/${productLinks.length}) Analisi: ${productUrl}`);
+      counter++;
 
       try {
-        await page.goto(product.href, { waitUntil: "domcontentloaded", timeout: 45000 });
-        await new Promise((r) => setTimeout(r, 1200));
+        await page.goto(productUrl, { waitUntil: "domcontentloaded" });
+        await wait(2000);
 
-        // 📄 Estrae i link ai PDF
-        const pdfLinks = await page.$$eval('a[href$=".pdf"]', (anchors) =>
-          anchors.map((a) => {
-            const file = a.href.split("/").pop().split("?")[0];
-            const decoded = decodeURIComponent(file)
-              .replace(/_/g, " ")
-              .replace(/\.pdf.*/i, "")
-              .trim();
-            return {
-              name: decoded,
-              href: a.href,
-            };
-          })
+        // 🧩 Estraggo nome prodotto da più possibili elementi
+        const productName =
+          (await page.$eval("h1", (el) => el.innerText.trim()).catch(() => null)) ||
+          (await page.$eval(".product-title", (el) => el.innerText.trim()).catch(() => null)) ||
+          (await page.$eval("meta[property='og:title']", (el) => el.content).catch(() => null)) ||
+          (await page.title()) ||
+          "Unknown Product";
+
+        const pdfLinks = await page.$$eval("a", (links) =>
+          links
+            .map((a) => a.href)
+            .filter(
+              (href) =>
+                href &&
+                (href.endsWith(".pdf") ||
+                  href.includes(".pdf?") ||
+                  href.includes("download") ||
+                  href.includes("manual"))
+            )
         );
 
-        for (const pdf of pdfLinks) {
-          let size = 0;
-          try {
-            const res = await axios.head(pdf.href);
-            size = res.headers["content-length"]
-              ? parseInt(res.headers["content-length"])
-              : 0;
-          } catch (_) {}
+        if (pdfLinks.length === 0) {
+          console.warn(`⚠️ Nessun PDF trovato per ${productName}`);
+          continue;
+        }
 
-          console.log(`📄 PDF trovato: ${pdf.name}`);
+        pdfLinks.forEach((url) => {
           results.push({
             brand,
-            product: product.title,
-            manual_name: pdf.name,
-            url: pdf.href,
-            size,
-            source: product.href,
+            product: productName,
+            title: path.basename(url).replace(".pdf", ""),
+            url,
           });
-        }
-
-        if (pdfLinks.length === 0) {
-          console.warn(`⚠️ Nessun PDF trovato per ${product.title}`);
-        }
+          console.log(`📄 PDF trovato: ${decodeURIComponent(path.basename(url))}`);
+        });
       } catch (err) {
-        console.warn(`⚠️ Errore su ${product.title}: ${err.message}`);
+        console.error(`❌ Errore durante analisi ${productUrl}: ${err.message}`);
       }
     }
 
-    console.log(`\n📄 Totale PDF trovati (prima della deduplica): ${results.length}`);
-
-    // 🧠 Deduplicazione intelligente (basata su nome file + size)
-    const outPath = path.join(process.cwd(), `output_${brand}.json`);
-    let previous = [];
-
-    if (fs.existsSync(outPath)) {
-      try {
-        previous = JSON.parse(fs.readFileSync(outPath, "utf8"));
-        console.log(`📚 Trovati ${previous.length} manuali precedenti.`);
-      } catch {
-        console.warn("⚠️ File output precedente corrotto o non leggibile, verrà sovrascritto.");
-      }
-    }
-
-    const key = (url, size) => {
-      const name = decodeURIComponent(url.split("/").pop().split("?")[0]);
-      return `${name}_${size}`;
-    };
-    const previousKeys = new Set(previous.map(p => key(p.url, p.size)));
-    const newResults = results.filter(r => !previousKeys.has(key(r.url, r.size)));
-
-    if (newResults.length > 0) {
-      console.log(`🆕 Trovati ${newResults.length} nuovi manuali.`);
-      const merged = [...previous, ...newResults];
-      fs.writeFileSync(outPath, JSON.stringify(merged, null, 2));
-      console.log(`💾 Aggiornato file con ${merged.length} manuali totali.`);
-    } else {
-      console.log("✅ Nessun nuovo manuale trovato, file invariato.");
-    }
-
-    // 🔎 Riepilogo
-    const preview = newResults.slice(0, 10);
-    if (preview.length > 0) {
-      console.log("\n📋 Anteprima dei nuovi manuali trovati:");
-      preview.forEach((r) => console.log(`  • ${r.manual_name} (${r.product})`));
-      if (newResults.length > 10)
-        console.log(`  ... e altri ${newResults.length - 10} manuali.`);
-    }
-
-  } catch (err) {
-    console.error(`❌ Errore fatale nel crawler ${brand}:`, err.message);
-  } finally {
     await browser.close();
-  }
 
-  return results;
+    console.log(`\n📄 Totale PDF trovati: ${results.length}`);
+    const outputFile = `output_${brand}.json`;
+    fs.writeFileSync(outputFile, JSON.stringify(results, null, 2));
+    console.log(`💾 Salvati ${results.length} risultati in ${outputFile}`);
+
+    return results;
+  } catch (err) {
+    console.error(`❌ Errore generale nel crawler: ${err.message}`);
+    await browser.close();
+    return [];
+  }
+}
+
+// 🔁 Scroll automatico per caricare contenuti dinamici
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let totalHeight = 0;
+      const distance = 400;
+      const timer = setInterval(() => {
+        const scrollHeight = document.body.scrollHeight;
+        window.scrollBy(0, distance);
+        totalHeight += distance;
+        if (totalHeight >= scrollHeight - window.innerHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 200);
+    });
+  });
 }
