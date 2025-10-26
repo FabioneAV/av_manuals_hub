@@ -1,3 +1,4 @@
+// scripts/crawler_core.js
 import puppeteer from "puppeteer";
 import axios from "axios";
 import fs from "fs";
@@ -48,15 +49,19 @@ export async function crawlSite(config) {
         await page.goto(product.href, { waitUntil: "domcontentloaded", timeout: 45000 });
         await new Promise((r) => setTimeout(r, 1200));
 
-        // Cerca PDF nel DOM
+        // 📄 Estrae i link ai PDF
         const pdfLinks = await page.$$eval('a[href$=".pdf"]', (anchors) =>
-          anchors.map((a) => ({
-            name:
-              a.href.split("/").pop().replace(/_/g, " ").replace(/\.pdf.*/i, "") ||
-              a.textContent.trim() ||
-              "Manual",
-            href: a.href,
-          }))
+          anchors.map((a) => {
+            const file = a.href.split("/").pop().split("?")[0];
+            const decoded = decodeURIComponent(file)
+              .replace(/_/g, " ")
+              .replace(/\.pdf.*/i, "")
+              .trim();
+            return {
+              name: decoded,
+              href: a.href,
+            };
+          })
         );
 
         for (const pdf of pdfLinks) {
@@ -89,7 +94,7 @@ export async function crawlSite(config) {
 
     console.log(`\n📄 Totale PDF trovati (prima della deduplica): ${results.length}`);
 
-    // 🧠 Deduplicazione intelligente
+    // 🧠 Deduplicazione intelligente (basata su nome file + size)
     const outPath = path.join(process.cwd(), `output_${brand}.json`);
     let previous = [];
 
@@ -102,9 +107,12 @@ export async function crawlSite(config) {
       }
     }
 
-    const newResults = results.filter(
-      (r) => !previous.some((p) => p.url === r.url && p.size === r.size)
-    );
+    const key = (url, size) => {
+      const name = decodeURIComponent(url.split("/").pop().split("?")[0]);
+      return `${name}_${size}`;
+    };
+    const previousKeys = new Set(previous.map(p => key(p.url, p.size)));
+    const newResults = results.filter(r => !previousKeys.has(key(r.url, r.size)));
 
     if (newResults.length > 0) {
       console.log(`🆕 Trovati ${newResults.length} nuovi manuali.`);
@@ -115,7 +123,7 @@ export async function crawlSite(config) {
       console.log("✅ Nessun nuovo manuale trovato, file invariato.");
     }
 
-    // Mostra anteprima dei nuovi
+    // 🔎 Riepilogo
     const preview = newResults.slice(0, 10);
     if (preview.length > 0) {
       console.log("\n📋 Anteprima dei nuovi manuali trovati:");
