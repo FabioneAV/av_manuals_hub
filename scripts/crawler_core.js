@@ -42,6 +42,11 @@ export async function crawlSite(config) {
         await page.goto(product.href, { waitUntil: "domcontentloaded", timeout: 60000 });
         await wait(2000);
 
+        // Estrae titolo del prodotto dalla pagina
+        const productTitle = await page.$eval("h1", (el) => el.innerText.trim()).catch(async () => {
+          return (await page.title()) || product.title || "Unknown Product";
+        });
+
         const pdfLinks = await page.$$eval("a", (els) =>
           els
             .map((a) => ({
@@ -52,14 +57,14 @@ export async function crawlSite(config) {
         );
 
         if (pdfLinks.length === 0) {
-          console.log(`⚠️ Nessun PDF trovato per ${product.title}`);
+          console.log(`⚠️ Nessun PDF trovato per ${productTitle}`);
           continue;
         }
 
         for (const pdf of pdfLinks) {
           results.push({
             brand: config.brand,
-            product: product.title || "Unknown Product",
+            product: productTitle,
             title: pdf.text || path.basename(pdf.href),
             url: pdf.href,
           });
